@@ -1,2 +1,2 @@
 # AutoDailyCP-Go
-https://gitee.com/Finch1/FuckDailyCP的Golang版本
+[FuckDailyCP](https://gitee.com/Finch1/FuckDailyCP) 的 Golang 版本

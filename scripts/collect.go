@@ -16,7 +16,10 @@ type collectInfoJson struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Datas   struct {
-		Wid string `json:"wid"`
+		Rows []struct {
+			Wid     string `json:"wid"`
+			FormWid string `json:"formWid"`
+		} `json:"rows"`
 	} `json:"datas"`
 }
 
@@ -26,42 +29,73 @@ type collectDetailJSON struct {
 	Message string `json:"message"`
 	Datas   struct {
 		Collector struct {
-			FormWid       string `json:"formWid"`
-			Wid           string `json:"wid"`
 			SchoolTaskWid string `json:"schoolTaskWid"`
 		} `json:"collector"`
 	} `json:"datas"`
 }
 
-// 提交收集选项JSON
-type fillCollectForm struct {
-	ExtraFieldItemValue string `json:"extraFieldItemValue"`
-	ExtraFieldItemWid   int    `json:"extraFieldItemWid"`
+// 信息表单JSON
+type formJSON struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Datas   struct {
+		Rows []rowJSON `json:"rows"`
+	} `json:"datas"`
+}
+
+// 信息表单RowJSON
+type rowJSON struct {
+	Wid           string  `json:"wid"`
+	FormWid       string  `json:"formWid"`
+	FieldType     int     `json:"fieldType"`
+	Title         string  `json:"title"`
+	Description   string  `json:"description"`
+	MinLength     int     `json:"minLength"`
+	MaxLength     int     `json:"maxLength"`
+	Sort          string  `json:"sort"`
+	IsRequired    int     `json:"isRequired"`
+	ImageCount    int     `json:"imageCount"`
+	HasOtherItems int     `json:"hasOtherItems"`
+	ColName       string  `json:"colName"`
+	Value         string  `json:"value"`
+	MinValue      float32 `json:"minValue"`
+	MaxValue      float32 `json:"maxValue"`
+	IsDecimal     bool    `json:"isDecimal"`
+	FieldItems    []struct {
+		ItemWid       string `json:"itemWid"`
+		Content       string `json:"content"`
+		IsOtherItems  int    `json:"isOtherItems"`
+		ContendExtend int    `json:"contendExtend"`
+		IsSelected    int    `json:"isSelected"`
+	} `json:"fieldItems"`
 }
 
 // 提交收集信息
 type collectData struct {
-	FormWid       string            `json:"formWid"`
-	CollectWid    string            `json:"collectWid"`
-	SchoolTaskWid string            `json:"schoolTaskWid"`
-	Form          []fillCollectForm `json:"form"`
-	Address       string            `json:"address"`
-	UaIsCpadaily  bool              `json:"uaIsCpadaily"`
+	FormWid       string    `json:"formWid"`
+	CollectWid    string    `json:"collectWid"`
+	SchoolTaskWid string    `json:"schoolTaskWid"`
+	Form          []rowJSON `json:"form"`
+	Address       string    `json:"address"`
+	UaIsCpadaily  bool      `json:"uaIsCpadaily"`
 }
 
+// DoCollect 执行收集
 func DoCollect(host string, key string, client *http.Client, collectAddr string) string {
 	var info = collectInfoJson{}
 	var details = collectDetailJSON{}
-	var form = collectData{}.Form
-	collector := details.Datas.Collector
+	var form = formJSON{}
 	_ = json.Unmarshal(queryCollectorProcessingList(host, client), &info)
-	if info.Datas.Wid == "" {
+	if info.Datas.Rows[0].Wid == "" {
 		return utils.Message("Collect Error: " + "There is no collect to do.")
 	}
-	_ = json.Unmarshal(detailCollector(host, client, info.Datas.Wid), &details)
-	_ = json.Unmarshal(getFormFields(host, client, collector.FormWid, collector.Wid), &form)
+	row := info.Datas.Rows[0]
+	_ = json.Unmarshal(detailCollector(host, client, row.Wid), &details)
+	collector := details.Datas.Collector
+	_ = json.Unmarshal(getFormFields(host, client, row.FormWid, row.Wid), &form)
+	retForm := fillFormFields(form.Datas.Rows)
 
-	return utils.Message(submitForm(host, client, key, collector.FormWid, collector.Wid, collector.SchoolTaskWid, form, collectAddr))
+	return utils.Message(submitForm(host, client, key, row.FormWid, row.Wid, collector.SchoolTaskWid, retForm, collectAddr))
 }
 
 // queryCollectorProcessingList 获取收集列表
@@ -79,10 +113,10 @@ func queryCollectorProcessingList(host string, client *http.Client) []byte {
 		return nil
 	}
 	ret, _ := ioutil.ReadAll(res.Body)
-
 	return ret
 }
 
+// detailCollector 查询收集信息
 func detailCollector(host string, client *http.Client, collectorWid string) []byte {
 	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/detailCollector", host)
 	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"collectorWid":"%v"}`, collectorWid)))
@@ -95,12 +129,10 @@ func detailCollector(host string, client *http.Client, collectorWid string) []by
 	return ret
 }
 
+// getFormFields 获取历史表单
 func getFormFields(host string, client *http.Client, formWid string, collectorWid string) []byte {
 	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/getFormFields", host)
-	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"pageSize": 50,
-            "pageNumber": 1,
-            "formWid": %v,
-            "collectorWid": %v}`, formWid, collectorWid)))
+	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"pageSize": 50,"pageNumber": 1,"formWid": %v,"collectorWid": %v}`, formWid, collectorWid)))
 	if res != nil {
 		defer res.Body.Close()
 	} else {
@@ -110,8 +142,27 @@ func getFormFields(host string, client *http.Client, formWid string, collectorWi
 	return ret
 }
 
-func submitForm(host string, client *http.Client, key string, formWid string, collectWid string, schoolTaskWid string, form []fillCollectForm, address string) string {
-	collectURL := fmt.Sprintf("https://%v/wec-counselor-sign-apps/stu/collector/submitForm", host)
+// fillFormFields 填充表单
+func fillFormFields(rs []rowJSON) []rowJSON {
+	retForm := make([]rowJSON, 0, len(rs))
+	for _, rw := range rs {
+		for _, fi := range rw.FieldItems {
+			if fi.IsSelected == 1 {
+				rw.FieldItems = append(rw.FieldItems[0:0:0], fi)
+				break
+			} else {
+				continue
+			}
+		}
+		retForm = append(retForm, rw)
+	}
+
+	return retForm
+}
+
+// submitForm 提交表单
+func submitForm(host string, client *http.Client, key string, formWid string, collectWid string, schoolTaskWid string, form []rowJSON, address string) string {
+	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/submitForm", host)
 	body := collectData{
 		FormWid:       formWid,
 		CollectWid:    collectWid,
@@ -131,5 +182,6 @@ func submitForm(host string, client *http.Client, key string, formWid string, co
 		return utils.Message("Collect Error: " + "Error submiting the Collector.")
 	}
 	finlStr, _ := ioutil.ReadAll(res.Body)
+
 	return string(finlStr)
 }

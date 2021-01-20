@@ -24,6 +24,11 @@ type Logger struct {
 	level int
 }
 
+type Responce struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
 // Println 打印
 func (ll *Logger) Println(msg string) {
 	fmt.Printf("%s %s\n", time.Now().Format("2006-01-02 15:04:05.99999 -0700"), msg)

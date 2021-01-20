@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"strings"
 
 	"AutoDailyCP-Go/scripts"
 	"golang.org/x/net/publicsuffix"
@@ -40,9 +41,19 @@ func main() {
 		}
 
 		// Sign
-		scripts.DoSign(conf.Host, conf.Key, client, auth.SignAddress)
+		retSign := scripts.DoSign(conf.Host, conf.Key, client, auth.SignAddress)
+		if strings.Contains(retSign, "SUCCESS") {
+			utils.Log().Println("Sign Success")
+		} else {
+			utils.Log().Println(retSign)
+		}
 
 		// Collect
-		scripts.DoCollect(conf.Host, conf.Key, client, auth.CollectAddress)
+		retCollect := scripts.DoCollect(conf.Host, conf.Key, client, auth.CollectAddress)
+		if strings.Contains(retCollect, "SUCCESS") {
+			utils.Log().Println("Collect Success")
+		} else {
+			utils.Log().Println(retCollect)
+		}
 	}
 }

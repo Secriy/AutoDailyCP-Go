@@ -86,8 +86,8 @@ func DoCollect(host string, key string, client *http.Client, collectAddr string)
 	var details = collectDetailJSON{}
 	var form = formJSON{}
 	_ = json.Unmarshal(queryCollectorProcessingList(host, client), &info)
-	if info.Datas.Rows[0].Wid == "" {
-		return utils.Message("Collect Error: " + "There is no collect to do.")
+	if len(info.Datas.Rows) == 0 {
+		return "Collect Error: There is no collect to do."
 	}
 	row := info.Datas.Rows[0]
 	_ = json.Unmarshal(detailCollector(host, client, row.Wid), &details)
@@ -95,7 +95,11 @@ func DoCollect(host string, key string, client *http.Client, collectAddr string)
 	_ = json.Unmarshal(getFormFields(host, client, row.FormWid, row.Wid), &form)
 	retForm := fillFormFields(form.Datas.Rows)
 
-	return utils.Message(submitForm(host, client, key, row.FormWid, row.Wid, collector.SchoolTaskWid, retForm, collectAddr))
+	if collectAddr == "" {
+		collectAddr = strings.ReplaceAll(form.Datas.Rows[0].Value, "/", "")
+	}
+
+	return submitForm(host, client, key, row.FormWid, row.Wid, collector.SchoolTaskWid, retForm, collectAddr)
 }
 
 // queryCollectorProcessingList 获取收集列表
@@ -179,7 +183,7 @@ func submitForm(host string, client *http.Client, key string, formWid string, co
 	if res != nil {
 		defer res.Body.Close()
 	} else {
-		return utils.Message("Collect Error: " + "Error submiting the Collector.")
+		return "Collect Error: Error submiting the Collector."
 	}
 	finlStr, _ := ioutil.ReadAll(res.Body)
 

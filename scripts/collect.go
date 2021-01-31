@@ -11,15 +11,19 @@ import (
 	"AutoDailyCP-Go/utils"
 )
 
+// 收集数据Data
+type rowData struct {
+	Wid     string `json:"wid"`
+	FormWid string `json:"formWid"`
+	Subject string `json:"subject"`
+}
+
 // 收集列表JSON
-type collectInfoJson struct {
+type collectInfoJSON struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
 	Datas   struct {
-		Rows []struct {
-			Wid     string `json:"wid"`
-			FormWid string `json:"formWid"`
-		} `json:"rows"`
+		Rows []rowData `json:"rows"`
 	} `json:"datas"`
 }
 
@@ -82,23 +86,35 @@ type collectData struct {
 
 // DoCollect 执行收集
 func DoCollect(host string, key string, client *http.Client, collectAddr string) string {
-	var info = collectInfoJson{}
-	var details = collectDetailJSON{}
-	var form = formJSON{}
+	var info = collectInfoJSON{}
+	var row rowData
 	_ = json.Unmarshal(queryCollectorProcessingList(host, client), &info)
-	if len(info.Datas.Rows) == 0 {
+	// 判断收集数量
+	switch {
+	case len(info.Datas.Rows) == 0:
 		return "Collect Error: There is no collect to do."
+	case len(info.Datas.Rows) > 0:
+		for k, v := range info.Datas.Rows {
+			if strings.Contains(v.Subject, "每日学生健康打卡") {
+				row = info.Datas.Rows[k]
+			}
+		}
+		if row.Subject == "" {
+			return "Collect Error: There is no collect to do."
+		}
 	}
-	row := info.Datas.Rows[0]
+	// 查询收集详细信息
+	var details = collectDetailJSON{}
 	_ = json.Unmarshal(detailCollector(host, client, row.Wid), &details)
 	collector := details.Datas.Collector
+	// 获取历史表单
+	var form = formJSON{}
 	_ = json.Unmarshal(getFormFields(host, client, row.FormWid, row.Wid), &form)
 	retForm := fillFormFields(form.Datas.Rows)
-
+	// 获取历史地址
 	if collectAddr == "" {
 		collectAddr = strings.ReplaceAll(form.Datas.Rows[0].Value, "/", "")
 	}
-
 	return submitForm(host, client, key, row.FormWid, row.Wid, collector.SchoolTaskWid, retForm, collectAddr)
 }
 
@@ -160,7 +176,6 @@ func fillFormFields(rs []rowJSON) []rowJSON {
 		}
 		retForm = append(retForm, rw)
 	}
-
 	return retForm
 }
 
@@ -186,6 +201,5 @@ func submitForm(host string, client *http.Client, key string, formWid string, co
 		return "Collect Error: Error submiting the Collector."
 	}
 	finlStr, _ := ioutil.ReadAll(res.Body)
-
 	return string(finlStr)
 }

@@ -11,116 +11,69 @@ import (
 	"AutoDailyCP-Go/utils"
 )
 
-// 收集数据Data
-type rowData struct {
-	Wid     string `json:"wid"`
-	FormWid string `json:"formWid"`
-	Subject string `json:"subject"`
-}
-
-// 收集列表JSON
-type collectInfoJSON struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Datas   struct {
-		Rows []rowData `json:"rows"`
-	} `json:"datas"`
-}
-
-// 收集详细信息JSON
-type collectDetailJSON struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Datas   struct {
-		Collector struct {
-			SchoolTaskWid string `json:"schoolTaskWid"`
-		} `json:"collector"`
-	} `json:"datas"`
-}
-
-// 信息表单JSON
-type formJSON struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Datas   struct {
-		Rows []rowJSON `json:"rows"`
-	} `json:"datas"`
-}
-
-// 信息表单RowJSON
-type rowJSON struct {
-	Wid           string  `json:"wid"`
-	FormWid       string  `json:"formWid"`
-	FieldType     int     `json:"fieldType"`
-	Title         string  `json:"title"`
-	Description   string  `json:"description"`
-	MinLength     int     `json:"minLength"`
-	MaxLength     int     `json:"maxLength"`
-	Sort          string  `json:"sort"`
-	IsRequired    int     `json:"isRequired"`
-	ImageCount    int     `json:"imageCount"`
-	HasOtherItems int     `json:"hasOtherItems"`
-	ColName       string  `json:"colName"`
-	Value         string  `json:"value"`
-	MinValue      float32 `json:"minValue"`
-	MaxValue      float32 `json:"maxValue"`
-	IsDecimal     bool    `json:"isDecimal"`
-	FieldItems    []struct {
-		ItemWid       string `json:"itemWid"`
-		Content       string `json:"content"`
-		IsOtherItems  int    `json:"isOtherItems"`
-		ContendExtend int    `json:"contendExtend"`
-		IsSelected    int    `json:"isSelected"`
-	} `json:"fieldItems"`
-}
-
-// 提交收集信息
-type collectData struct {
-	FormWid       string    `json:"formWid"`
-	CollectWid    string    `json:"collectWid"`
-	SchoolTaskWid string    `json:"schoolTaskWid"`
-	Form          []rowJSON `json:"form"`
-	Address       string    `json:"address"`
-	UaIsCpadaily  bool      `json:"uaIsCpadaily"`
+type Collect struct {
+	Script
+	collectWid    string
+	formWid       string
+	schoolTaskWid string
 }
 
 // DoCollect 执行收集
-func DoCollect(host string, key string, client *http.Client, collectAddr string) string {
-	var info = collectInfoJSON{}
+func (s Collect) DoCollect(client *http.Client) bool {
+	var list = collectListJSON{}
 	var row rowData
-	_ = json.Unmarshal(queryCollectorProcessingList(host, client), &info)
+	// List of Collect
+	_ = json.Unmarshal(s.queryCollectorProcessingList(client), &list)
 	// 判断收集数量
 	switch {
-	case len(info.Datas.Rows) == 0:
-		return "Collect Error: There is no collect to do."
-	case len(info.Datas.Rows) > 0:
-		for k, v := range info.Datas.Rows {
+	case len(list.Datas.Rows) == 0:
+		utils.Log("CollectError").Message("There is no collect to do.")
+		return false
+	case len(list.Datas.Rows) > 0:
+		for k, v := range list.Datas.Rows {
 			if strings.Contains(v.Subject, "每日学生健康打卡") {
-				row = info.Datas.Rows[k]
+				row = list.Datas.Rows[k]
+				s.collectWid = row.Wid
+				s.formWid = row.FormWid
 			}
 		}
 		if row.Subject == "" {
-			return "Collect Error: There is no collect to do."
+			utils.Log("CollectError").Message("There is no collect to do.")
+			return false
 		}
 	}
 	// 查询收集详细信息
-	var details = collectDetailJSON{}
-	_ = json.Unmarshal(detailCollector(host, client, row.Wid), &details)
-	collector := details.Datas.Collector
+	var detail = collectDetailJSON{}
+	_ = json.Unmarshal(s.detailCollector(client), &detail)
+	s.schoolTaskWid = detail.Datas.Collector.SchoolTaskWid
 	// 获取历史表单
 	var form = formJSON{}
-	_ = json.Unmarshal(getFormFields(host, client, row.FormWid, row.Wid), &form)
+	_ = json.Unmarshal(s.getFormFields(client), &form)
 	retForm := fillFormFields(form.Datas.Rows)
 	// 获取历史地址
-	if collectAddr == "" {
-		collectAddr = strings.ReplaceAll(form.Datas.Rows[0].Value, "/", "")
+	if s.CollectAddr == "" {
+		s.CollectAddr = strings.ReplaceAll(form.Datas.Rows[0].Value, "/", "")
 	}
-	return submitForm(host, client, key, row.FormWid, row.Wid, collector.SchoolTaskWid, retForm, collectAddr)
+
+	ret := s.submitForm(client, retForm)
+	if ret == "" {
+		return false
+	}
+
+	if strings.Contains(ret, "SUCCESS") {
+		utils.Log("").Message("Collect Success")
+
+		return true
+	} else {
+		utils.Log("").Message(ret)
+	}
+
+	return false
 }
 
 // queryCollectorProcessingList 获取收集列表
-func queryCollectorProcessingList(host string, client *http.Client) []byte {
-	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/queryCollectorProcessingList", host)
+func (s Collect) queryCollectorProcessingList(client *http.Client) []byte {
+	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/queryCollectorProcessingList", s.Host)
 	req, _ := http.NewRequest("POST", collectURL, bytes.NewBuffer([]byte(`{"pageSize": 10, "pageNumber": 1}`)))
 	req.Header.Add("User-Agent", "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 (4789933056)cpdaily/8.2.4  wisedu/8.2.4")
 	req.Header.Add("Accept", "application/json, text/plain, */*")
@@ -137,34 +90,63 @@ func queryCollectorProcessingList(host string, client *http.Client) []byte {
 }
 
 // detailCollector 查询收集信息
-func detailCollector(host string, client *http.Client, collectorWid string) []byte {
-	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/detailCollector", host)
-	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"collectorWid":"%v"}`, collectorWid)))
+func (s Collect) detailCollector(client *http.Client) []byte {
+	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/detailCollector", s.Host)
+	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"collectorWid":"%v"}`, s.collectWid)))
 	if res != nil {
 		defer res.Body.Close()
 	} else {
 		return nil
 	}
 	ret, _ := ioutil.ReadAll(res.Body)
+
 	return ret
 }
 
 // getFormFields 获取历史表单
-func getFormFields(host string, client *http.Client, formWid string, collectorWid string) []byte {
-	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/getFormFields", host)
-	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"pageSize": 50,"pageNumber": 1,"formWid": %v,"collectorWid": %v}`, formWid, collectorWid)))
+func (s Collect) getFormFields(client *http.Client) []byte {
+	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/getFormFields", s.Host)
+	res, _ := client.Post(collectURL, "application/json", strings.NewReader(fmt.Sprintf(`{"pageSize": 50,"pageNumber": 1,"formWid": %v,"collectorWid": %v}`, s.formWid, s.collectWid)))
 	if res != nil {
 		defer res.Body.Close()
 	} else {
 		return nil
 	}
 	ret, _ := ioutil.ReadAll(res.Body)
+
 	return ret
 }
 
+// submitForm 提交表单
+func (s Collect) submitForm(client *http.Client, form []collectRowJSON) string {
+	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/submitForm", s.Host)
+	body := collectData{
+		FormWid:       s.formWid,
+		CollectWid:    s.collectWid,
+		SchoolTaskWid: s.schoolTaskWid,
+		Form:          form,
+		Address:       s.CollectAddr,
+		UaIsCpadaily:  true,
+	}
+	jsonBody, _ := json.Marshal(body)
+	req, _ := http.NewRequest("POST", collectURL, strings.NewReader(string(jsonBody)))
+	req.Header.Add("Content-Type", "application/json")
+	req.Header.Add("Cpdaily-Extension", utils.GetExtension(s.Key))
+	res, _ := client.Do(req)
+	if res != nil {
+		defer res.Body.Close()
+	} else {
+		utils.Log("CollectError").Message("Error submitting the Collector.")
+		return ""
+	}
+	finalStr, _ := ioutil.ReadAll(res.Body)
+
+	return string(finalStr)
+}
+
 // fillFormFields 填充表单
-func fillFormFields(rs []rowJSON) []rowJSON {
-	retForm := make([]rowJSON, 0, len(rs))
+func fillFormFields(rs []collectRowJSON) []collectRowJSON {
+	retForm := make([]collectRowJSON, 0, len(rs))
 	for _, rw := range rs {
 		for _, fi := range rw.FieldItems {
 			if fi.IsSelected == 1 {
@@ -177,29 +159,4 @@ func fillFormFields(rs []rowJSON) []rowJSON {
 		retForm = append(retForm, rw)
 	}
 	return retForm
-}
-
-// submitForm 提交表单
-func submitForm(host string, client *http.Client, key string, formWid string, collectWid string, schoolTaskWid string, form []rowJSON, address string) string {
-	collectURL := fmt.Sprintf("https://%v/wec-counselor-collector-apps/stu/collector/submitForm", host)
-	body := collectData{
-		FormWid:       formWid,
-		CollectWid:    collectWid,
-		SchoolTaskWid: schoolTaskWid,
-		Form:          form,
-		Address:       address,
-		UaIsCpadaily:  true,
-	}
-	jsonBody, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", collectURL, strings.NewReader(string(jsonBody)))
-	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Cpdaily-Extension", utils.GetExtension(key))
-	res, _ := client.Do(req)
-	if res != nil {
-		defer res.Body.Close()
-	} else {
-		return "Collect Error: Error submiting the Collector."
-	}
-	finlStr, _ := ioutil.ReadAll(res.Body)
-	return string(finlStr)
 }

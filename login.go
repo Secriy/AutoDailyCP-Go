@@ -26,14 +26,15 @@ type result struct {
 	NeedCaptcha  string `json:"needCaptcha"`
 }
 
-// Success JsonStruct of Success
-type success struct {
+// loginRes JsonStruct of Success
+type loginRes struct {
 	ResultCode string `json:"resultCode"`
 	URL        string `json:"url"`
 }
 
 // Login 登录
-func Login(host string, client *http.Client, username string, password string) string {
+func (t Task) Login(c *http.Client) bool {
+	host := config.Host
 	foreURL := fmt.Sprintf("https://%v/iap/login?service=https://mobile.campushoy.com/v6/auth/campus/cas/login", host)
 	ltURL := fmt.Sprintf("https://%v/iap/security/lt", host)
 	loginURL := fmt.Sprintf("https://%v/iap/doLogin", host)
@@ -41,11 +42,12 @@ func Login(host string, client *http.Client, username string, password string) s
 	// Service
 	req, _ := http.NewRequest("GET", foreURL, nil)
 	req.Header.Add("CpdailyAuthType", "Login")
-	res, _ := client.Do(req)
+	res, _ := c.Do(req)
 	if res != nil {
 		defer res.Body.Close()
 	} else {
-		return utils.Message("Login Error: " + "Service Response Empty.")
+		utils.Log("LoginError").Message("Service Response Empty.")
+		return false
 	}
 	var lt = strings.Split(res.Request.URL.String(), "=")[1]
 	lt = strings.Replace(lt, "&isCpdaily", "", -1)
@@ -53,11 +55,13 @@ func Login(host string, client *http.Client, username string, password string) s
 	// Security
 	req, _ = http.NewRequest("POST", ltURL, strings.NewReader(fmt.Sprintf("lt=%v", lt)))
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	res, _ = client.Do(req)
+	res, _ = c.Do(req)
 	if res != nil {
 		defer res.Body.Close()
 	} else {
-		return utils.Message("Login Error: " + "Security Response Empty.")
+		utils.Log("LoginError").Message("Security Response Empty.")
+
+		return false
 	}
 	body, _ := ioutil.ReadAll(res.Body)
 	var response = response{}
@@ -66,8 +70,8 @@ func Login(host string, client *http.Client, username string, password string) s
 
 	// DoLogin
 	data := url.Values{
-		"username":   {username},
-		"password":   {password},
+		"username":   {t.Account},
+		"password":   {t.Password},
 		"lt":         {lt},
 		"dllt":       {"cpdaily"},
 		"mobile":     {""},
@@ -79,23 +83,29 @@ func Login(host string, client *http.Client, username string, password string) s
 	req.Header.Add("Accept", "application/json, text/plain, */*")
 	req.Header.Add("X-Requested-With", "XMLHttpRequest")
 	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	res, _ = client.Do(req)
+	res, _ = c.Do(req)
 	if res != nil {
 		defer res.Body.Close()
 	} else {
-		return utils.Message("Login Error: " + "Security Response Empty.")
+		utils.Log("LoginError").Message("Security Response Empty.")
+
+		return false
 	}
 	out, _ := ioutil.ReadAll(res.Body)
 
-	var success = success{}
-	_ = json.Unmarshal(out, &success)
+	var loginRes = loginRes{}
+	_ = json.Unmarshal(out, &loginRes)
 
 	// Redirect
-	if success.ResultCode == "REDIRECT" {
-		authURL := fmt.Sprintf("https://%v/portal/login", host) + strings.Split(success.URL, "?")[1]
-		res, _ = client.Get(authURL)
-		return ""
+	if loginRes.ResultCode == "REDIRECT" {
+		authURL := fmt.Sprintf("https://%v/portal/login", host) + strings.Split(loginRes.URL, "?")[1]
+		res, _ = c.Get(authURL)
+		utils.Log("LoginInfo").Message("Success")
+
+		return true
 	}
 
-	return utils.Message("Login Error: " + success.ResultCode)
+	utils.Log("LoginError").Message(loginRes.ResultCode)
+
+	return false
 }

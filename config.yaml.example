@@ -1,6 +1,6 @@
 Host: ""
 Key: "b3L26XNL"
-Auth:
+Tasks:
   - Account: ""
     Password: ""
     SchoolName: ""

@@ -24,31 +24,34 @@ func (s Sign) DoSign(client *http.Client) bool {
 	_ = json.Unmarshal(s.getStuSignInfosInOneDay(client), &list)
 	sign := list.Datas.UnSignedTasks
 	if sign == nil || len(sign) == 0 {
-		utils.Log("SignError").Message("AThere is no sign to do.")
+		utils.Log("SignError").Message("There is no sign to do.")
 		return false
 	}
-	s.signInstanceWid = sign[0].SignInstanceWid
-	s.signWid = sign[0].SignWid
-	// Detail of Sign
-	detail := s.detailSignInstance(client)
-	if detail == "" {
-		return false
-	}
-	// Fill the Sign form
-	form := fillSign(detail)
-	// Submit Sign
-	res := s.submitSign(client, form)
-	if res == "" {
-		return false
-	}
-	if strings.Contains(res, "SUCCESS") {
-		utils.Log("SignInfo").Message("Success")
+	for _, sg := range sign {
+		s.signInstanceWid = sg.SignInstanceWid
+		s.signWid = sg.SignWid
+		// Detail of Sign
+		detail := s.detailSignInstance(client)
+		if detail == "" {
+			return false
+		}
+		// Fill the Sign form
+		form := fillSign(detail)
+		// Submit Sign
+		res := s.submitSign(client, form)
+		if res == "" {
+			return false
+		}
+		if strings.Contains(res, "SUCCESS") {
+			utils.Log("SignInfo").Message("Success")
 
-		return true
-	} else {
-		utils.Log("SignError").Message(res)
-	}
+			return true
+		} else {
+			utils.Log("SignError").Message(res)
+		}
 
+		return false
+	}
 	return false
 }
 
@@ -85,7 +88,7 @@ func (s Sign) detailSignInstance(client *http.Client) string {
 		return ""
 	}
 	ret, _ := ioutil.ReadAll(res.Body)
-	if !strings.Contains(string(ret), "学生晨午晚检") {
+	if !strings.Contains(string(ret), "学生每日健康打卡（本科生）") {
 		utils.Log("SignError").Message("Not sign task.")
 		return ""
 	}
@@ -107,6 +110,7 @@ func (s Sign) submitSign(client *http.Client, extraFieldItems []signFillForm) st
 		SignPhotoURL:    "",
 		ExtraFieldItems: extraFieldItems,
 		UaIsCpadaily:    true,
+		SignVersion:     "1.0.0",
 	}
 	jsonBody, _ := json.Marshal(body)
 	req, _ := http.NewRequest("POST", submitURL, strings.NewReader(string(jsonBody)))
@@ -129,13 +133,10 @@ func (s Sign) submitSign(client *http.Client, extraFieldItems []signFillForm) st
 func fillSign(details string) []signFillForm {
 	var form = signDetailJSON{}
 	var ret []signFillForm
-	if details == "" {
-		return []signFillForm{}
-	}
 	_ = json.Unmarshal([]byte(details), &form)
 	for _, v := range form.Datas.ExtraField {
 		for _, t := range v.ExtraFieldItems {
-			if t.Content == "腋下温度37.3℃以下" || t.Content == "无" {
+			if t.Content == "37.2℃及以下" || t.Content == "健康" || t.Content == "是" {
 				ret = append(ret, signFillForm{
 					ExtraFieldItemValue: t.Content,
 					ExtraFieldItemWid:   t.Wid,

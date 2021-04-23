@@ -1,12 +1,12 @@
 package utils
 
 import (
-"encoding/base64"
-"encoding/hex"
-"encoding/json"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
 
-"github.com/forgoer/openssl"
-"github.com/google/uuid"
+	"github.com/forgoer/openssl"
+	"github.com/google/uuid"
 )
 
 type extension struct {
@@ -35,7 +35,7 @@ func GetExtension(key string) string {
 		DeviceID:      uuid.New().String(),
 		SystemName:    "StudioX",
 		UserID:        "23333333",
-		AppVersion:    "8.1.13",
+		AppVersion:    "8.2.22",
 		Model:         "X233",
 		Lon:           117.0298292824606,
 		SystemVersion: "19.1",

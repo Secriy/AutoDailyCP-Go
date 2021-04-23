@@ -19,6 +19,7 @@ type signData struct {
 	SignPhotoURL    string         `json:"signPhotoUrl"`
 	ExtraFieldItems []signFillForm `json:"extraFieldItems"`
 	UaIsCpadaily    bool           `json:"uaIsCpadaily"`
+	SignVersion     string         `json:"signVersion"`
 }
 
 // 签到列表JSON
